@@ -35,13 +35,6 @@ extern int my_property_list(void (*propfn)(const char *key, const char *value, v
 extern int my_property_get(const char *key, char *value, const char *default_value);
 extern int my_property_set(const char *key, const char *value);
 
-static void unload_libcutils(void)
-{
-    if (libcutils) {
-        android_dlclose(libcutils);
-    }
-}
-
 #define PROPERTY_DLSYM(func) {*(void **)(&bionic_##func) = (void*)android_dlsym(libcutils, #func); \
                               if (!bionic_##func) { \
                                   fprintf(stderr, "failed to load " #func " from bionic libcutils\n"); \
@@ -56,7 +49,9 @@ static void ensure_bionic_properties_initialized(void)
             PROPERTY_DLSYM(property_get);
             PROPERTY_DLSYM(property_set);
             PROPERTY_DLSYM(property_list);
-            atexit(unload_libcutils);
+            // Keep libcutils loaded until exit. On Android 16 it pulls in libc++.so and libc.so,
+            // which have PT_TLS; unloading them at exit trips the linker's static TLS CHECK
+            // (linker_tls.cpp unregister_tls_module) and aborts every getprop/setprop.
         } else {
             own_impl = 1;
             fprintf(stderr, "failed to load bionic libc.so, falling back own property implementation\n");
